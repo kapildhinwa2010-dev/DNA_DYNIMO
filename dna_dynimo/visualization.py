@@ -5,7 +5,7 @@
 - Singular value spectrum (DNA-generated vs random)
 - Domain comparison grid
 
-Run: python src/visualization.py
+Run: python -m dna_dynimo.visualization
 """
 import os
 import zlib
@@ -49,11 +49,14 @@ def compare_domains(dna, domains=('general', 'math', 'code', 'science'),
         seed = zlib.crc32(name.encode('utf-8'))
         torch.manual_seed(seed)
         B_backup = dna.B.clone()
-        with torch.no_grad():
-            dna.B.copy_(torch.randn_like(dna.B) * 20.0)
-        W = dna.generate_weights(size, size)
-        with torch.no_grad():
-            dna.B.copy_(B_backup)
+        try:
+            with torch.no_grad():
+                dna.B.copy_(torch.randn_like(dna.B) * 20.0)
+            with torch.inference_mode():
+                W = dna.generate_weights(size, size)
+        finally:
+            with torch.no_grad():
+                dna.B.copy_(B_backup)
         im = ax.imshow(W.detach().cpu().numpy(), cmap='viridis')
         ax.set_title(f'{name.upper()}', fontweight='bold')
         ax.set_xticks([]); ax.set_yticks([])
@@ -73,11 +76,11 @@ def spectrum_comparison(dna, size=512, path='results/dna_spectrum.png'):
     Achhi trained DNA ka spectrum structured hota hai (low-rank-ish patterns).
     """
     torch.manual_seed(0)
-    W_dna = dna.generate_weights(size, size)
-    W_rand = torch.randn(size, size) * (2.0 / (2 * size)) ** 0.5
-
-    s_dna = torch.linalg.svdvals(W_dna).detach().cpu().numpy()
-    s_rand = torch.linalg.svdvals(W_rand).detach().cpu().numpy()
+    with torch.inference_mode():
+        W_dna = dna.generate_weights(size, size)
+        W_rand = torch.randn(size, size) * (2.0 / (2 * size)) ** 0.5
+        s_dna = torch.linalg.svdvals(W_dna).cpu().numpy()
+        s_rand = torch.linalg.svdvals(W_rand).cpu().numpy()
 
     fig, ax = plt.subplots(figsize=(8, 5))
     idx = np.arange(1, len(s_dna) + 1)
@@ -132,11 +135,12 @@ def demo():
     dna = FourierDNA(hidden=128, num_freqs=64)
     print(f"   DNA params: {dna.count_parameters():,}")
 
-    W = dna.generate_weights(256, 256)
+    with torch.inference_mode():
+        W = dna.generate_weights(256, 256)
     visualize_matrix(W, 'FourierDNA Generated Matrix (256×256)',
                      'results/dna_matrix_heatmap.png')
     compare_domains(dna)
-    spectrum_comparison(dna)
+    spectrum_comparison(dna, size=128)
     compression_curve(dna)
     print("\n✅ All visualizations saved to results/")
 
