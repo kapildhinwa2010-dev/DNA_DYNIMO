@@ -10,6 +10,6 @@ Include the affected file or component, the impact, and a minimal reproduction w
 
 Security fixes target the current `main` branch. This project is an experimental research toolkit and is not a production model-serving service.
 
-## Code scanning status
+## Automated code scanning
 
-The repository is currently private, and GitHub Code Security is not enabled for it. The CodeQL workflow therefore cannot upload findings to GitHub Code Scanning until the repository becomes eligible and Code Security is enabled. This is a repository feature/plan setting, not a missing source file.
+The repository includes a GitHub Actions CodeQL workflow for the supported Python code and workflow definitions. Results are uploaded to GitHub Code Scanning when that feature is available and enabled for the repository. Workflow completion and scan coverage are not a guarantee that the project is free of vulnerabilities; review findings and test changes before deployment.
