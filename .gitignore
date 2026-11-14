@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Experiment outputs
+results/
+saved_models/
+*.pt
+
+# Environments
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
