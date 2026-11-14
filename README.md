@@ -1,5 +1,7 @@
 # 🧬 DNA_DYNIMO — FourierDNA + Complexity Router
 
+[![CI](https://github.com/kapildhinwa2010-dev/DNA_DYNIMO/actions/workflows/ci.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/DNA_DYNIMO/actions/workflows/ci.yml) [![CodeQL](https://github.com/kapildhinwa2010-dev/DNA_DYNIMO/actions/workflows/codeql.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/DNA_DYNIMO/actions/workflows/codeql.yml) ![Python](https://img.shields.io/badge/python-3.11-blue) ![PyTorch](https://img.shields.io/badge/PyTorch-2.x-ee4c2c) ![License](https://img.shields.io/badge/license-MIT-green)
+
 **Ek chhota "DNA" (~257K params) jo kisi bhi size ki weight matrix on-demand generate karta hai — aur ek Complexity Router jo decide karta hai ki kab kitne parameters generate karne hain.**
 
 Ye repo ek self-contained, copy-friendly toolkit hai: koi bhi is code ko copy karke apna **FourierDNA + Complexity Router** system bana sakta hai. Source tech: [kapildhinwa2010-dev/DNA](https://github.com/kapildhinwa2010-dev/DNA).
@@ -37,7 +39,7 @@ Pehla end-to-end trainable transformer jiske **saare Q/K/V/O + FFN weights DNA s
 
 - Embeddings, LayerNorms, output head: normal trainable params (wrapper)
 - Attention + FFN weights: DNA-generated
-- regenerate=True mode: har training step pe DNA se fresh weights ("infinite DNA")
+- regenerate=True mode: har training step pe DNA se fresh weights ("infinite DNA", experimental)
 - freeze_dna_weights(): DNA weights freeze karke sirf wrapper train karo (fast start)
 - Weight accounting built-in: dna_generated_params() vs dna_storage_params() vs trainable_params()
 
@@ -47,7 +49,7 @@ examples/train_transformer.py isko toy copy task pe train karke prove karta hai 
 
 Adaptive parameter allocation ka 4-component system:
 
-1. **ResourceMonitor** — VRAM/RAM scan → max generate-able params
+1. **ResourceMonitor** — VRAM/RAM scan → max generate-able params (hard cap ke saath, OOM-safe)
 2. **KnowledgeClassifier** — input text ka complexity score (0–1)
 3. **Router** — complexity × hardware limit = kitne params generate karne hain (min 10M), model config (layers × hidden_dim) decide
 4. **DNAEngine** — us order ke hisaab se Q/K/V/O + FFN weights generate
@@ -58,6 +60,9 @@ Simple question → chhota model. Complex question → bada model. Hardware ke h
 
 ## 📁 Structure
 
+    .github/workflows/
+      ci.yml                  # CI: saare test suites CPU torch pe
+      codeql.yml              # CodeQL security analysis (weekly + push)
     src/
       fourier_dna.py            # FourierDNA — core coordinate→weight generator
       complexity_router.py      # ResourceMonitor + KnowledgeClassifier + Router + DNAEngine
