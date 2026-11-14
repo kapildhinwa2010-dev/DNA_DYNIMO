@@ -1,81 +1,120 @@
 """
-Model generator: DNA se frozen model banao aur load karo.
-
-Ye file DNA repo ke examples ke saath kaam karne ke liye hai:
-  - generate_1b_model(dna, output_path, num_layers, layer_size)
-  - Frozen1BModel(d, num_layers)  # load_state_dict ke saath compatible
+Model Generator - Generate 1B models from DNA
+(original: DNA repo src/modle_genration.py)
 """
-import os
-import time
 import torch
 import torch.nn as nn
-
-from .fourier_dna import FourierDNA
-
-
-def generate_1b_model(dna, output_path='frozen_1b_model.pt',
-                      num_layers=15, layer_size=8192):
-    """
-    DNA se ek frozen weight model generate karke .pt file mein save karo.
-
-    Har layer: Q, K, V, O projections + FFN (4x) weights.
-    Sab weights DNA se generate hote hain — phir DNA delete ho sakta hai.
-    """
-    start = time.time()
-    state = {}
-    total = 0
-
-    print(f"🧬 Generating {num_layers} layers × {layer_size} hidden ...")
-    for l in range(num_layers):
-        for name in ('W_q', 'W_k', 'W_v', 'W_o'):
-            W = dna.generate_weights(layer_size, layer_size)
-            state[f'layers.{l}.{name}'] = W.detach().cpu()
-            total += W.numel()
-        W1 = dna.generate_weights(layer_size * 4, layer_size)
-        W2 = dna.generate_weights(layer_size, layer_size * 4)
-        state[f'layers.{l}.W_ffn1'] = W1.detach().cpu()
-        state[f'layers.{l}.W_ffn2'] = W2.detach().cpu()
-        total += W1.numel() + W2.numel()
-        print(f"  ✓ Layer {l + 1}/{num_layers}: cumulative {total:,} params")
-
-    elapsed = time.time() - start
-    os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
-    torch.save({
-        'model_state_dict': state,
-        'model_config': {'d': layer_size, 'num_layers': num_layers},
-        'total_parameters': total,
-        'generation_time': elapsed,
-    }, output_path)
-
-    size_gb = os.path.getsize(output_path) / (1024 ** 3)
-    print(f"✅ Saved {output_path}: {total:,} params, {elapsed:.1f}s, {size_gb:.2f} GB")
-    return {'total_parameters': total, 'generation_time': elapsed, 'file_size_gb': size_gb}
-
+import os
+import time
+import gc
 
 class Frozen1BModel(nn.Module):
     """
-    Frozen model jo generated weights se forward pass karta hai.
-    state dict keys: layers.{l}.{W_q,W_k,W_v,W_o,W_ffn1,W_ffn2}
+    Standard frozen model structure for 1B parameters.
+
+    Args:
+        d: Layer dimension (default: 8192)
+        num_layers: Number of layers (default: 15)
     """
     def __init__(self, d=8192, num_layers=15):
         super().__init__()
         self.d = d
         self.num_layers = num_layers
-        for l in range(num_layers):
-            self.register_buffer(f'layers_{l}_W_q', torch.zeros(d, d))
-            self.register_buffer(f'layers_{l}_W_k', torch.zeros(d, d))
-            self.register_buffer(f'layers_{l}_W_v', torch.zeros(d, d))
-            self.register_buffer(f'layers_{l}_W_o', torch.zeros(d, d))
-            self.register_buffer(f'layers_{l}_W_ffn1', torch.zeros(d * 4, d))
-            self.register_buffer(f'layers_{l}_W_ffn2', torch.zeros(d, d * 4))
+
+        self.input_proj = nn.Linear(1, d)
+        self.output_proj = nn.Linear(d, 1)
+        self.layers = nn.ModuleList([
+            nn.Linear(d, d) for _ in range(num_layers)
+        ])
 
     def forward(self, x):
-        h = x
-        for l in range(self.num_layers):
-            q = h @ getattr(self, f'layers_{l}_W_q').T
-            k = h @ getattr(self, f'layers_{l}_W_k').T
-            v = h @ getattr(self, f'layers_{l}_W_v').T
-            att = torch.softmax(q @ k.T / (self.d ** 0.5), dim=-1) @ v
-            h = h + att @ getattr(self, f'layers_{l}_W_o').T
-            h = h + torch.nn.functional.silu(h @ getattr(self, f'layers_{l}_W_ffn1').T) @ getattr(self, f'layers_{l}_W_ffn2').T
-        return h.sum()
+        """Forward pass"""
+        h = torch.relu(self.input_proj(x))
+        for layer in self.layers:
+            h = torch.relu(layer(h))
+        return self.output_proj(h)
+
+
+def generate_1b_model(dna, output_path, num_layers=15, layer_size=8192):
+    """
+    Generate 1B model from DNA and save to disk.
+
+    Args:
+        dna: FourierDNA instance
+        output_path: Path to save model
+        num_layers: Number of layers
+        layer_size: Size of each layer
+    """
+    print("="*70)
+    print("🧬 GENERATING 1B MODEL FROM DNA")
+    print("="*70)
+
+    total_params = 0
+    start_time = time.time()
+    state_dict = {}
+
+    # Add I/O projections
+    print("Adding input/output projections...")
+    state_dict['input_proj.weight'] = torch.randn(layer_size, 1) * 0.01
+    state_dict['input_proj.bias'] = torch.zeros(layer_size)
+    state_dict['output_proj.weight'] = torch.randn(1, layer_size) * 0.01
+    state_dict['output_proj.bias'] = torch.zeros(1)
+    total_params += layer_size * 2 + 2
+
+    # Generate layers
+    for i in range(num_layers):
+        print(f"  Layer {i+1}/{num_layers}...", end=" ", flush=True)
+
+        # Generate weights
+        W = dna.generate_weights(layer_size, layer_size)
+
+        # Add to state_dict
+        state_dict[f'layers.{i}.weight'] = W.T.clone()
+        state_dict[f'layers.{i}.bias'] = torch.zeros(layer_size)
+
+        layer_params = W.numel() + layer_size
+        total_params += layer_params
+
+        # Free memory
+        del W
+        gc.collect()
+
+        print(f"✓ {layer_params:,} params")
+
+    generation_time = time.time() - start_time
+
+    print(f"✅ Generated {total_params:,} parameters in {generation_time:.1f}s")
+
+    # Save to disk
+    print("💾 Saving to disk...")
+    save_start = time.time()
+
+    torch.save({
+        'model_state_dict': state_dict,
+        'model_config': {
+            'd': layer_size,
+            'num_layers': num_layers,
+        },
+        'metadata': {
+            'total_parameters': total_params,
+            'generation_time': generation_time,
+            'created_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+        }
+    }, output_path)
+
+    save_time = time.time() - save_start
+    file_size_gb = os.path.getsize(output_path) / (1024**3)
+
+    print(f"✅ Saved in {save_time:.1f}s")
+    print(f"📦 File size: {file_size_gb:.2f} GB")
+
+    # Free memory
+    del state_dict
+    gc.collect()
+
+    return {
+        'total_parameters': total_params,
+        'generation_time': generation_time,
+        'save_time': save_time,
+        'file_size_gb': file_size_gb
+    }
