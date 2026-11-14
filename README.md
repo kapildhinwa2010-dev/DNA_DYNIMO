@@ -1,12 +1,12 @@
 # 🧬 DNA_DYNIMO — FourierDNA + Complexity Router
 
-**Ek chhota "DNA" (~50 KB) jo kisi bhi size ki weight matrix on-demand generate karta hai — aur ek Complexity Router jo decide karta hai ki kab kitne parameters generate karne hain.**
+**Ek chhota "DNA" (~257K params) jo kisi bhi size ki weight matrix on-demand generate karta hai — aur ek Complexity Router jo decide karta hai ki kab kitne parameters generate karne hain.**
 
 Ye repo ek self-contained, copy-friendly toolkit hai: koi bhi is code ko copy karke apna **FourierDNA + Complexity Router** system bana sakta hai. Source tech: [kapildhinwa2010-dev/DNA](https://github.com/kapildhinwa2010-dev/DNA).
 
 ---
 
-## 📐 Core Concept
+## 📐 FourierDNA — Core Concept
 
 Weight matrix ko image ki tarah treat karo. Har cell ka ek coordinate (i, j) hai:
 
@@ -20,20 +20,9 @@ Weight matrix ko image ki tarah treat karo. Har cell ka ek coordinate (i, j) hai
 
 **Result:** ~257K trainable params se 1B params generate (≈3913x compression). Jitni badi matrix, utna zyada compression — DNA ka size fixed hai.
 
-## 🧠 HKSP — HyperKnowledge Super Parameter
+## 🔀 Complexity Router — Adaptive Parameter Generation
 
-FourierDNA + domain conditioning:
-
-    W[i,j] = f(coords, domain)
-
-- **HSP part** = Fourier coordinate features (structure)
-- **KSP part** = learnable domain embedding (general / math / code / science)
-
-Ek hi super-parameter 4 domains ke alag-alag matrices deta hai. Caching (100x speedup) aur hybrid mode (chhoti layers normal, badi layers HKSP) included.
-
-## 🔀 Complexity Router
-
-Adaptive parameter allocation:
+Adaptive parameter allocation ka 4-component system:
 
 1. **ResourceMonitor** — VRAM/RAM scan → max generate-able params
 2. **KnowledgeClassifier** — input text ka complexity score (0–1)
@@ -49,8 +38,6 @@ Simple question → chhota model. Complex question → bada model. Hardware ke h
     src/
       fourier_dna.py        # FourierDNA — core coordinate→weight generator
       complexity_router.py  # ResourceMonitor + KnowledgeClassifier + Router + DNAEngine
-      hksp.py               # HKSP (3 versions: original, optimized+caching, comparison)
-      analog_ternary.py     # Analog (signal-based) + Ternary (BitNet-style) parameter layers
       model_generator.py    # 1B model generation + Frozen1BModel loader
     examples/
       generate_1b_model.py  # DNA se 1B model banao
@@ -68,10 +55,7 @@ Simple question → chhota model. Complex question → bada model. Hardware ke h
     # 2. Complexity Router demo
     python src/complexity_router.py
 
-    # 3. HKSP comparison (compression vs speed)
-    python src/hksp.py
-
-    # 4. 1B model generate karo (GPU recommended)
+    # 3. 1B model generate karo (GPU recommended)
     python examples/generate_1b_model.py
 
 ## 💡 Khud ka system banane ke liye (copy-paste)
@@ -97,8 +81,8 @@ Router ke saath:
 ## 📊 Known trade-offs
 
 - ✅ Massive compression (DNA size fixed, output unlimited)
-- ✅ Domain-aware generation (HKSP)
-- ⚠️ Training slower (weights generate karne padte hain; caching se mitigate)
+- ✅ Hardware-aware + input-complexity-driven allocation (Router)
+- ⚠️ Training slower (weights generate karne padte hain)
 - ⚠️ Abhi tak sirf generation demonstrated — real language-task training open research hai
 
 ## 📜 License
