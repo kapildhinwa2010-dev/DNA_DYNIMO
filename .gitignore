@@ -18,6 +18,11 @@ saved_models/
 .venv/
 venv/
 
+# Local secrets and environment configuration
+.env
+.env.*
+!.env.example
+
 # OS / editor
 .DS_Store
 .idea/
