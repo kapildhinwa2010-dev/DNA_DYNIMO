@@ -22,7 +22,7 @@ Weight matrix ko image ki tarah treat karo. Har cell ka ek coordinate (i, j) hai
 
 ## ♾️ InfiniteParameter — Continuous Fourier Field
 
-FourierDNA ka evolution (infini.py se): wahi B matrix + sin/cos features, plus:
+FourierDNA ka evolution: wahi B matrix + sin/cos features, plus:
 
 1. **Domain embeddings** (8 domains: general/math/code/science/creative/reasoning/language/vision)
 2. **Scale embeddings** (5 fractal scales — coarse = structure, fine = detail)
@@ -30,6 +30,18 @@ FourierDNA ka evolution (infini.py se): wahi B matrix + sin/cos features, plus:
 4. **Multi-scale matrix** = 5 scales ka sum (fractal detail)
 
 Storage ~1 MB → infinite resolution output. Continuous function hai, isliye kisi bhi (i, j) pe query kar sakte ho.
+
+## 🤖 DNATransformer — Working Model on DNA Weights
+
+Pehla end-to-end trainable transformer jiske **saare Q/K/V/O + FFN weights DNA se generate hote hain**:
+
+- Embeddings, LayerNorms, output head: normal trainable params (wrapper)
+- Attention + FFN weights: DNA-generated
+- regenerate=True mode: har training step pe DNA se fresh weights ("infinite DNA")
+- freeze_dna_weights(): DNA weights freeze karke sirf wrapper train karo (fast start)
+- Weight accounting built-in: dna_generated_params() vs dna_storage_params() vs trainable_params()
+
+examples/train_transformer.py isko toy copy task pe train karke prove karta hai ki DNA weights se asli learning hoti hai.
 
 ## 🔀 Complexity Router — Adaptive Parameter Generation
 
@@ -50,15 +62,19 @@ Simple question → chhota model. Complex question → bada model. Hardware ke h
       fourier_dna.py            # FourierDNA — core coordinate→weight generator
       complexity_router.py      # ResourceMonitor + KnowledgeClassifier + Router + DNAEngine
       infinite_parameter.py     # InfiniteParameter — continuous field: any resolution, fractal scales, domain-aware, OOM-safe
+      dna_transformer.py        # DNATransformer — working model on DNA-generated weights
       model_generator.py        # 1B model generation + Frozen1BModel loader
       memory_safe_generator.py  # Layer-by-layer 1B generation with gc (OOM-safe, CPU mode)
+      visualization.py          # Heatmaps, spectral fingerprint, compression curve, domain grid
     examples/
-      train_dna.py          # FourierDNA ko structured target matrix pe train karo
-      generate_1b_model.py  # DNA se 1B model banao
-      load_and_test.py      # Frozen model load + inference benchmark
+      train_dna.py            # FourierDNA ko structured target matrix pe train karo
+      train_transformer.py    # DNATransformer ko copy task pe train karo (proof of learning)
+      generate_1b_model.py    # DNA se 1B model banao
+      load_and_test.py        # Frozen model load + inference benchmark
     tests/
       test_fourier_dna.py          # FourierDNA + Router tests
       test_infinite_parameter.py   # InfiniteParameter tests
+      test_dna_transformer.py      # DNATransformer: forward, backward, causal mask, freeze mode
 
 ## 🚀 Quickstart
 
@@ -67,6 +83,7 @@ Simple question → chhota model. Complex question → bada model. Hardware ke h
     # 1. Core tech test karo
     python tests/test_fourier_dna.py
     python tests/test_infinite_parameter.py
+    python tests/test_dna_transformer.py
 
     # 2. Complexity Router demo
     python src/complexity_router.py
@@ -74,14 +91,20 @@ Simple question → chhota model. Complex question → bada model. Hardware ke h
     # 3. DNA train karo (structured target pe)
     python examples/train_dna.py
 
-    # 4. 1B model generate karo (GPU recommended)
+    # 4. DNA Transformer train karo (copy task — proof of learning)
+    python examples/train_transformer.py
+
+    # 5. 1B model generate karo (GPU recommended)
     python examples/generate_1b_model.py
 
-    # 5. Memory-safe variant (CPU, layer-by-layer, gc ke saath)
+    # 6. Memory-safe variant (CPU, layer-by-layer, gc ke saath)
     python src/memory_safe_generator.py
 
-    # 6. InfiniteParameter demo (resolution/domain/scale tests)
+    # 7. InfiniteParameter demo (resolution/domain/scale tests)
     python src/infinite_parameter.py
+
+    # 8. Visualizations (results/ folder mein save honge)
+    python src/visualization.py
 
 ## 💡 Khud ka system banane ke liye (copy-paste)
 
@@ -103,13 +126,22 @@ Router ke saath:
     result = router.route("Explain quantum entanglement in detail.")
     # → complexity score, allocated params, generated weights
 
+Pura model DNA weights pe:
+
+    from src.dna_transformer import DNATransformer
+
+    model = DNATransformer(vocab_size=256, d_model=128, num_heads=4, num_layers=4)
+    print(model.dna_generated_params())   # DNA se aaye weights
+    print(model.dna_storage_params())     # DNA ka asli storage
+
 ## 📊 Known trade-offs
 
 - ✅ Massive compression (DNA size fixed, output unlimited)
 - ✅ Infinite resolution + domain-aware generation (InfiniteParameter)
+- ✅ End-to-end trainable model on DNA weights (DNATransformer)
 - ✅ Hardware-aware + input-complexity-driven allocation (Router)
 - ⚠️ Training slower (weights generate karne padte hain)
-- ⚠️ Abhi tak sirf generation demonstrated — real language-task training open research hai
+- ⚠️ Real language-task performance abhi open research hai (copy task tak validated)
 
 ## 📜 License
 
