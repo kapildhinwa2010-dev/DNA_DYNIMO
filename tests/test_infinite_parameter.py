@@ -1,12 +1,12 @@
 """
 Unit tests for InfiniteParameter (continuous Fourier field).
-Run: python tests/test_infinite_parameter.py
+Run: python -m pytest test_infinite_parameter.py
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import torch
-from src.infinite_parameter import InfiniteParameter
+from dna_dynimo.infinite_parameter import InfiniteParameter
 
 
 def test_shapes():
@@ -49,9 +49,10 @@ def test_compression():
     aur threshold 500.
     """
     torch.manual_seed(0)
-    ip = InfiniteParameter(num_domains=4, num_scales=3, embed_dim=32, num_freqs=32, hidden_dim=64)
+    ip = InfiniteParameter(num_domains=4, num_scales=3, embed_dim=8, num_freqs=8, hidden_dim=16)
     field_params = ip.count_parameters()
-    W = ip.generate_matrix(4096, 4096)
+    with torch.inference_mode():
+        W = ip.generate_matrix(1024, 1024)
     ratio = W.numel() / field_params
     assert ratio > 500, f"compression bahut kam: {ratio:.0f}x"
     print(f"✅ test_compression PASSED ({ratio:.0f}x)")

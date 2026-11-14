@@ -11,18 +11,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 import os
+from pathlib import Path
 
 class InfiniteParameter(nn.Module):
     """
-    A single "parameter" (Neural Field) that can generate INFINITE information.
+    A neural field that can generate matrices at caller-selected resolutions.
 
     Key Concepts:
-    1. CONTINUOUS: Query at any resolution (infinite precision)
+    1. CONTINUOUS: Query arbitrary positive matrix dimensions, within resources
     2. FRACTAL: Self-similar patterns at multiple scales
     3. DOMAIN-AWARE: Different output for different contexts
 
-    Storage: ~1 MB
-    Output: INFINITE weights at any resolution/context
+    Storage: about 0.9 MiB with default dimensions
+    Output: dense matrices; memory remains proportional to requested size
     """
 
     def __init__(self, num_domains=8, num_scales=5, embed_dim=64, num_freqs=64, hidden_dim=256):
@@ -64,46 +65,49 @@ class InfiniteParameter(nn.Module):
 
     def generate_matrix(self, out_dim, in_dim, domain_idx=0, scale_idx=0, device=None):
         """
-        Generate complete weight matrix with infinite resolution.
-        Uses batching to prevent OOM on large matrices.
+        Generate a matrix without materializing the full coordinate/feature grid.
+        Gradients are preserved; use torch.no_grad() for inference-only calls.
         """
+        if not isinstance(out_dim, int) or not isinstance(in_dim, int):
+            raise TypeError("out_dim and in_dim must be integers")
+        if out_dim < 1 or in_dim < 1:
+            raise ValueError("out_dim and in_dim must be positive")
+        if not 0 <= domain_idx < self.num_domains:
+            raise ValueError(f"domain_idx must be in [0, {self.num_domains - 1}]")
+        if not 0 <= scale_idx < self.num_scales:
+            raise ValueError(f"scale_idx must be in [0, {self.num_scales - 1}]")
         if device is None:
             device = self.B.device
+        device = torch.device(device)
+        if device != self.B.device:
+            raise ValueError("device must match the module device; call module.to(device) first")
 
-        # Create coordinate grid
-        i_vals = torch.linspace(-1, 1, out_dim, device=device)
-        j_vals = torch.linspace(-1, 1, in_dim, device=device)
-        grid_i, grid_j = torch.meshgrid(i_vals, j_vals, indexing='ij')
-        coords = torch.stack([grid_i.flatten(), grid_j.flatten()], dim=1)
-
-        # Fourier features
-        proj = 2 * np.pi * coords @ self.B.T
-        coord_feats = torch.cat([torch.sin(proj), torch.cos(proj)], dim=-1)
-
-        # Get embeddings
-        domain_emb = self.domain_embeddings(torch.tensor([domain_idx], device=device))
-        scale_emb = self.scale_embeddings(torch.tensor([scale_idx], device=device))
-
-        # Expand embeddings to match coords
-        domain_emb = domain_emb.expand(coords.size(0), -1)
-        scale_emb = scale_emb.expand(coords.size(0), -1)
-
-        # Combine inputs
-        mlp_input = torch.cat([coord_feats, domain_emb, scale_emb], dim=-1)
-
-        # Process in batches to prevent OOM (Crucial for 1024x1024+)
-        batch_size = 65536
+        dtype = self.B.dtype
+        row_values = torch.linspace(-1, 1, out_dim, device=device, dtype=dtype)
+        col_values = torch.linspace(-1, 1, in_dim, device=device, dtype=dtype)
+        domain_ids = torch.tensor([domain_idx], device=device)
+        scale_ids = torch.tensor([scale_idx], device=device)
+        domain_emb = self.domain_embeddings(domain_ids)
+        scale_emb = self.scale_embeddings(scale_ids)
+        total = out_dim * in_dim
+        flat_indices = torch.arange(total, device=device)
+        batch_size = 16_384
         all_weights = []
 
-        with torch.no_grad():
-            for start in range(0, mlp_input.size(0), batch_size):
-                end = min(start + batch_size, mlp_input.size(0))
-                batch_input = mlp_input[start:end]
-                batch_weights = self.field(batch_input)
-                all_weights.append(batch_weights)
+        for start in range(0, total, batch_size):
+            flat = flat_indices[start : start + batch_size]
+            rows = torch.div(flat, in_dim, rounding_mode="floor")
+            cols = flat.remainder(in_dim)
+            coords = torch.stack((row_values[rows], col_values[cols]), dim=-1)
+            projection = (2.0 * np.pi) * (coords @ self.B.T)
+            coord_features = torch.cat((torch.sin(projection), torch.cos(projection)), dim=-1)
+            count = flat.numel()
+            domain_batch = domain_emb.expand(count, -1)
+            scale_batch = scale_emb.expand(count, -1)
+            field_input = torch.cat((coord_features, domain_batch, scale_batch), dim=-1)
+            all_weights.append(self.field(field_input).squeeze(-1))
 
-        # Combine and reshape
-        weights = torch.cat(all_weights, dim=0).view(out_dim, in_dim)
+        weights = torch.cat(all_weights).view(out_dim, in_dim)
 
         # Apply scales
         scale_factor = 2.0 ** (-scale_idx)  # Finer scales = smaller values
@@ -168,16 +172,17 @@ def demo_infinite_parameters():
     print(f"🧮 Storage:")
     print(f"   - Stored Parameters: {stored_params:,}")
     print(f"   - Memory: {memory_kb:.2f} KB (~1 MB)")
-    print(f"   - Theoretical Capacity: INFINITE (Continuous Field)")
+    print(f"   - Coordinate field: continuous; generated output remains finite")
 
     # Test 1: Generate at different resolutions
     print(f"🔬 Test 1: INFINITE RESOLUTION")
-    print("   Same 1MB parameter can generate ANY size matrix:")
+    print("   The field can generate matrices at several requested sizes:")
 
     sizes = [64, 128, 256, 512, 1024]
     for size in sizes:
         start = time.time()
-        matrix = ip.generate_matrix(size, size, domain_idx=0, scale_idx=0, device=device)
+        with torch.inference_mode():
+            matrix = ip.generate_matrix(size, size, domain_idx=0, scale_idx=0, device=device)
         elapsed = time.time() - start
         print(f"   {size:4d}×{size:4d} ({size*size:,} weights): {elapsed:.3f}s, "
               f"mean={matrix.mean():.6f}, std={matrix.std():.6f}")
@@ -189,7 +194,8 @@ def demo_infinite_parameters():
     print("   Combining 5 scales for rich detail (256x256):")
 
     start = time.time()
-    multi_scale = ip.generate_multi_scale_matrix(256, 256, domain_idx=0, device=device)
+    with torch.inference_mode():
+        multi_scale = ip.generate_multi_scale_matrix(256, 256, domain_idx=0, device=device)
     elapsed = time.time() - start
     print(f"   Time: {elapsed:.3f}s")
     print(f"   Stats: mean={multi_scale.mean():.6f}, std={multi_scale.std():.6f}")
@@ -200,7 +206,8 @@ def demo_infinite_parameters():
 
     for domain_idx, domain_name in enumerate(ip.domain_names[:4]):  # Just show first 4
         start = time.time()
-        matrix = ip.generate_matrix(128, 128, domain_idx=domain_idx, scale_idx=0, device=device)
+        with torch.inference_mode():
+            matrix = ip.generate_matrix(128, 128, domain_idx=domain_idx, scale_idx=0, device=device)
         elapsed = time.time() - start
         print(f"   {domain_name:<12}: mean={matrix.mean():+.6f}, std={matrix.std():.6f} ({elapsed:.3f}s)")
         del matrix
@@ -214,14 +221,14 @@ def demo_infinite_parameters():
     print(f"📊 Storage vs Generation:")
     print(f"   - Stored: {stored_params:,} parameters ({memory_kb:.2f} KB)")
     print(f"   - Generated: Successfully generated up to 1024x1024 (1M+ weights)")
-    print(f"   - Compression Ratio: ∞ (Theoretical)")
+    print(f"   - Stored-to-output element ratio grows with requested matrix size")
 
     print(f"🎯 Proven Capabilities:")
-    print(f"   ✅ Infinite resolution (tested up to 1024x1024)")
+    print(f"   ✅ Multiple output resolutions (tested up to 1024x1024)")
     print(f"   ✅ Multi-scale fractal detail (5 scales combined)")
     print(f"   ✅ Domain-aware (8 different contexts)")
     print(f"   ✅ Continuous function (smooth interpolation)")
-    print(f"   ✅ OOM-safe (batched generation)")
+    print(f"   ✅ Chunked intermediate computation (output still needs memory)")
 
     print("✅ DEMO COMPLETE & ERROR-FREE!")
 
@@ -237,6 +244,8 @@ if __name__ == "__main__":
     ip = demo_infinite_parameters()
 
     # Save
-    os.makedirs('saved_models', exist_ok=True)
-    torch.save(ip.state_dict(), 'saved_models/infinite_parameter.pt')
-    print("💾 Saved to: saved_models/infinite_parameter.pt")
+    output_dir = Path(__file__).resolve().parents[1] / "saved_models"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "infinite_parameter.pt"
+    torch.save(ip.state_dict(), output_path)
+    print(f"💾 Saved to: {output_path}")

@@ -1,153 +1,104 @@
-# 🧬 DNA_DYNIMO — FourierDNA + Complexity Router
+# DNA_DYNIMO
 
-[![CI](https://github.com/kapildhinwa2010-dev/DNA_DYNIMO/actions/workflows/ci.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/DNA_DYNIMO/actions/workflows/ci.yml) [![CodeQL](https://github.com/kapildhinwa2010-dev/DNA_DYNIMO/actions/workflows/codeql.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/DNA_DYNIMO/actions/workflows/codeql.yml) ![Python](https://img.shields.io/badge/python-3.11-blue) ![PyTorch](https://img.shields.io/badge/PyTorch-2.x-ee4c2c) ![License](https://img.shields.io/badge/license-MIT-green)
+[![CI](https://github.com/kapildhinwa2010-dev/DNA_DYNIMO/actions/workflows/ci.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/DNA_DYNIMO/actions/workflows/ci.yml) [![CodeQL](https://github.com/kapildhinwa2010-dev/DNA_DYNIMO/actions/workflows/codeql.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/DNA_DYNIMO/actions/workflows/codeql.yml) ![Python](https://img.shields.io/badge/python-3.10--3.12-blue) ![PyTorch](https://img.shields.io/badge/PyTorch-2.1%2B-ee4c2c) ![License](https://img.shields.io/badge/license-MIT-green)
 
-**Ek chhota "DNA" (~257K params) jo kisi bhi size ki weight matrix on-demand generate karta hai — aur ek Complexity Router jo decide karta hai ki kab kitne parameters generate karne hain.**
+DNA_DYNIMO is a research toolkit for generating matrices with Fourier-feature neural fields, experimenting with budget-aware allocation, and running a small causal transformer. The project is **not a production language model or a validated serving stack**; real-task quality, training behavior, and performance still require independent evaluation.
 
-Ye repo ek self-contained, copy-friendly toolkit hai: koi bhi is code ko copy karke apna **FourierDNA + Complexity Router** system bana sakta hai. Source tech: [kapildhinwa2010-dev/DNA](https://github.com/kapildhinwa2010-dev/DNA).
+## Components
 
----
+### FourierDNA
 
-## 📐 FourierDNA — Core Concept
+`FourierDNA` maps normalized matrix coordinates through Fourier features and an MLP. Generation is chunked to limit intermediate memory while preserving autograd. The default generator has about **49K trainable parameters**; generated matrices are dense tensors and still require memory proportional to their output size. The parameter ratio alone is not evidence of equivalent model quality or effective compression in a deployed model.
 
-Weight matrix ko image ki tarah treat karo. Har cell ka ek coordinate (i, j) hai:
+### InfiniteParameter
 
-    W[i,j] = net( sin(2π·(i,j)·Bᵀ), cos(2π·(i,j)·Bᵀ) ) · scale
+`InfiniteParameter` adds domain and scale embeddings and supports chunked matrix generation. It can generate different resolutions, but “infinite” describes the coordinate field concept—not infinite compute, precision, or output storage. Use `torch.no_grad()` / `torch.inference_mode()` for inference-only generation.
 
-1. **Coordinate grid** — matrix ki har cell (i, j) ∈ [-1, 1]
-2. **Fourier projection** — fixed random matrix B (num_freqs × 2, scale 20): proj = 2π · coords @ Bᵀ
-3. **Features** — [sin(proj), cos(proj)] → 128-dim feature per coordinate (NeRF/SIREN-style encoding)
-4. **DNA network** — chhota MLP (128→128→128→1, SiLU) per-cell weight predict karta hai
-5. **Xavier scaling** — W ko (2/(in+out))^0.5 se scale karo
+### DNATransformer
 
-**Result:** ~257K trainable params se 1B params generate (≈3913x compression). Jitni badi matrix, utna zyada compression — DNA ka size fixed hai.
+The transformer has two distinct operating modes:
 
-## ♾️ InfiniteParameter — Continuous Fourier Field
+- `regenerate=False` (default) materializes dense matrices at initialization. Training updates those matrices and the wrapper; it **does not train the FourierDNA generator**.
+- `regenerate=True` generates matrices on each forward pass and propagates gradients into the shared FourierDNA generator. This is substantially more computationally expensive.
 
-FourierDNA ka evolution: wahi B matrix + sin/cos features, plus:
+The included copy-task example is a smoke/demo task, not evidence of useful language-model performance.
 
-1. **Domain embeddings** (8 domains: general/math/code/science/creative/reasoning/language/vision)
-2. **Scale embeddings** (5 fractal scales — coarse = structure, fine = detail)
-3. **Batched generation** (65K coords per batch → 1024×1024+ pe bhi OOM nahi)
-4. **Multi-scale matrix** = 5 scales ka sum (fractal detail)
+### ComplexityRouter
 
-Storage ~1 MB → infinite resolution output. Continuous function hai, isliye kisi bhi (i, j) pe query kar sakte ho.
+The router uses a deterministic, hand-built text heuristic (length, lexical diversity, and structural symbols) and a hard parameter budget. It is not a trained semantic classifier. Routed weights are inference tensors and the router retains them in memory, so keep the explicit cap appropriate for the target machine.
 
-## 🤖 DNATransformer — Working Model on DNA Weights
+## Install
 
-Pehla end-to-end trainable transformer jiske **saare Q/K/V/O + FFN weights DNA se generate hote hain**:
+Python 3.10–3.12 is supported. Install the package and test extras from the repository root:
 
-- Embeddings, LayerNorms, output head: normal trainable params (wrapper)
-- Attention + FFN weights: DNA-generated
-- regenerate=True mode: har training step pe DNA se fresh weights ("infinite DNA", experimental)
-- freeze_dna_weights(): DNA weights freeze karke sirf wrapper train karo (fast start)
-- Weight accounting built-in: dna_generated_params() vs dna_storage_params() vs trainable_params()
+```bash
+python -m pip install -e ".[test]"
+python -m pytest -q
+```
 
-examples/train_transformer.py isko toy copy task pe train karke prove karta hai ki DNA weights se asli learning hoti hai.
+For CPU-only installations, install the CPU PyTorch wheel first, then the project:
 
-## 🔀 Complexity Router — Adaptive Parameter Generation
+```bash
+python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+python -m pip install -e ".[test]"
+```
 
-Adaptive parameter allocation ka 4-component system:
+## Examples
 
-1. **ResourceMonitor** — VRAM/RAM scan → max generate-able params (hard cap ke saath, OOM-safe)
-2. **KnowledgeClassifier** — input text ka complexity score (0–1)
-3. **Router** — complexity × hardware limit = kitne params generate karne hain (min 10M), model config (layers × hidden_dim) decide
-4. **DNAEngine** — us order ke hisaab se Q/K/V/O + FFN weights generate
+```bash
+# Router demonstration
+python -m dna_dynimo.complexity_router
 
-Simple question → chhota model. Complex question → bada model. Hardware ke hisaab se capped.
+# Train a FourierDNA field on a synthetic target
+python examples/train_dna.py
 
----
+# Train the transformer copy-task demo using materialized weights
+python examples/train_transformer.py
 
-## 📁 Structure
+# Optional: train the shared FourierDNA generator on a tiny run (slower)
+python examples/train_transformer.py --steps 10 --regenerate
 
-    .github/workflows/
-      ci.yml                  # CI: saare test suites CPU torch pe
-      codeql.yml              # CodeQL security analysis (weekly + push)
-    src/
-      fourier_dna.py            # FourierDNA — core coordinate→weight generator
-      complexity_router.py      # ResourceMonitor + KnowledgeClassifier + Router + DNAEngine
-      infinite_parameter.py     # InfiniteParameter — continuous field: any resolution, fractal scales, domain-aware, OOM-safe
-      dna_transformer.py        # DNATransformer — working model on DNA-generated weights
-      model_generator.py        # 1B model generation + Frozen1BModel loader
-      memory_safe_generator.py  # Layer-by-layer 1B generation with gc (OOM-safe, CPU mode)
-      visualization.py          # Heatmaps, spectral fingerprint, compression curve, domain grid
-    examples/
-      train_dna.py            # FourierDNA ko structured target matrix pe train karo
-      train_transformer.py    # DNATransformer ko copy task pe train karo (proof of learning)
-      generate_1b_model.py    # DNA se 1B model banao
-      load_and_test.py        # Frozen model load + inference benchmark
-    tests/
-      test_fourier_dna.py          # FourierDNA + Router tests
-      test_infinite_parameter.py   # InfiniteParameter tests
-      test_dna_transformer.py      # DNATransformer: forward, backward, causal mask, freeze mode
+# Run a small, safe checkpoint-generation smoke example (defaults: 2 x 128)
+python examples/generate_1b_model.py
 
-## 🚀 Quickstart
+# Generate a very large dense artifact only after checking RAM and opting in
+python examples/generate_1b_model.py --num-layers 15 --layer-size 8192 --confirm-large
 
-    pip install -r requirements.txt
+# Load and benchmark the generated checkpoint
+python examples/load_and_test.py saved_models/frozen_1b_model.pt
 
-    # 1. Core tech test karo
-    python tests/test_fourier_dna.py
-    python tests/test_infinite_parameter.py
-    python tests/test_dna_transformer.py
+# Save visualizations under results/
+python -m dna_dynimo.visualization
+```
 
-    # 2. Complexity Router demo
-    python src/complexity_router.py
+Large dense checkpoint generation is **not streaming**: the complete state dict is held in host RAM. The generator estimates required memory and refuses runs that appear unsafe, but the estimate cannot account for every process or system-level constraint. Use a smaller model or a purpose-built sharded checkpoint writer for constrained environments.
 
-    # 3. DNA train karo (structured target pe)
-    python examples/train_dna.py
+## Library example
 
-    # 4. DNA Transformer train karo (copy task — proof of learning)
-    python examples/train_transformer.py
+```python
+import torch
+from dna_dynimo import FourierDNA
 
-    # 5. 1B model generate karo (GPU recommended)
-    python examples/generate_1b_model.py
+dna = FourierDNA(hidden=128, num_freqs=64)
+with torch.inference_mode():
+    weights = dna.generate_weights(1024, 1024)
+print(weights.shape)
+```
 
-    # 6. Memory-safe variant (CPU, layer-by-layer, gc ke saath)
-    python src/memory_safe_generator.py
+To train the shared generator through a transformer, construct it with `regenerate=True` and verify the cost on a small configuration first.
 
-    # 7. InfiniteParameter demo (resolution/domain/scale tests)
-    python src/infinite_parameter.py
+## Tests and security checks
 
-    # 8. Visualizations (results/ folder mein save honge)
-    python src/visualization.py
+GitHub Actions runs the test suite on Python 3.10, 3.11, and 3.12. CodeQL scans the Python source. The examples load only local, trusted PyTorch checkpoints using restricted `weights_only=True` deserialization.
 
-## 💡 Khud ka system banane ke liye (copy-paste)
+## Known limitations
 
-    from src.fourier_dna import FourierDNA
-    import torch
+- The router’s rule-based score is only a rough heuristic and should not be used as a safety or quality gate.
+- The transformer has not been evaluated on real language tasks.
+- Dense generated matrices consume memory proportional to their full shape; chunking bounds intermediates, not final output storage.
+- 1B-parameter generation requires multiple GiB of free RAM and is not suitable for ordinary laptops or CI.
+- Checkpoint generation initializes the surrounding input/output projections randomly; it is an architecture experiment, not a trained pretrained model.
 
-    dna = FourierDNA(hidden=128, num_freqs=64)
-    print(f"DNA params: {dna.count_parameters():,}")   # ~257K
+## License
 
-    W = dna.generate_weights(1024, 1024)               # on-demand weight matrix
-    print(W.shape)                                     # (1024, 1024)
-
-Router ke saath:
-
-    from src.complexity_router import DNAEngine, ComplexityRouter
-
-    engine = DNAEngine(hidden=128, num_freqs=64)
-    router = ComplexityRouter(engine)
-    result = router.route("Explain quantum entanglement in detail.")
-    # → complexity score, allocated params, generated weights
-
-Pura model DNA weights pe:
-
-    from src.dna_transformer import DNATransformer
-
-    model = DNATransformer(vocab_size=256, d_model=128, num_heads=4, num_layers=4)
-    print(model.dna_generated_params())   # DNA se aaye weights
-    print(model.dna_storage_params())     # DNA ka asli storage
-
-## 📊 Known trade-offs
-
-- ✅ Massive compression (DNA size fixed, output unlimited)
-- ✅ Infinite resolution + domain-aware generation (InfiniteParameter)
-- ✅ End-to-end trainable model on DNA weights (DNATransformer)
-- ✅ Hardware-aware + input-complexity-driven allocation (Router)
-- ⚠️ Training slower (weights generate karne padte hain)
-- ⚠️ Real language-task performance abhi open research hai (copy task tak validated)
-
-## 📜 License
-
-MIT — apna FourierDNA banao, share karo. 🧬
+MIT. See [LICENSE](LICENSE).

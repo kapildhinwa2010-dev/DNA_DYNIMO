@@ -1,18 +1,18 @@
 """
 Unit tests for DNATransformer — DNA weights se asli forward/backward.
-Run: python tests/test_dna_transformer.py
+Run: python -m pytest test_dna_transformer.py
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import torch
-from src.dna_transformer import DNATransformer
+from dna_dynimo.dna_transformer import DNATransformer
 
 
 def _tiny_model(**kw):
     torch.manual_seed(0)
     return DNATransformer(vocab_size=32, d_model=64, num_heads=4, num_layers=2,
-                          d_ff=128, max_seq_len=32, hidden=64, num_freqs=32, **kw)
+                          d_ff=128, max_seq_len=32, hidden=32, num_freqs=16, **kw)
 
 
 def test_forward_shapes():
@@ -74,10 +74,27 @@ def test_frozen_mode():
     print("✅ test_frozen_mode PASSED")
 
 
+def test_regenerate_trains_generator():
+    """Regenerate mode must preserve gradients into the shared DNA generator."""
+    model = _tiny_model(regenerate=True)
+    idx = torch.randint(0, 32, (2, 6))
+    _, loss = model(idx[:, :-1], targets=idx[:, 1:])
+    loss.backward()
+    dna_grad = sum(
+        parameter.grad.abs().sum().item()
+        for parameter in model.dna.parameters()
+        if parameter.grad is not None
+    )
+    assert dna_grad > 0.0, "DNA generator received no gradients"
+    assert all(block.attn.W_q is None for block in model.blocks)
+    print("✅ test_regenerate_trains_generator PASSED")
+
+
 if __name__ == "__main__":
     test_forward_shapes()
     test_loss_decreases()
     test_causal_mask()
     test_weight_accounting()
     test_frozen_mode()
+    test_regenerate_trains_generator()
     print("\n🎉 ALL DNA TRANSFORMER TESTS PASSED")

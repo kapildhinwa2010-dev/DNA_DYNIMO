@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import torch
 import torch.nn as nn
-from src.fourier_dna import FourierDNA
+from dna_dynimo.fourier_dna import FourierDNA
 
 def train_dna():
     device = "cuda" if torch.cuda.is_available() else "cpu"

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dna-dynimo"
+version = "0.1.0"
+description = "Fourier-feature neural fields, adaptive routing, and a research transformer"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "DNA_DYNIMO contributors" }]
+dependencies = [
+  "torch>=2.1.0",
+  "numpy>=1.24.0",
+  "matplotlib>=3.7.0",
+  "psutil>=5.9.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.4"]
+
+[tool.setuptools]
+packages = ["dna_dynimo"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

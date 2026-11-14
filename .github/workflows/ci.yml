@@ -7,33 +7,43 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
+    name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    env:
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
           cache: pip
+          cache-dependency-path: pyproject.toml
 
-      - name: Install CPU-only PyTorch (fast)
-        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Install CPU-only PyTorch
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 
-      - name: Install dependencies
-        run: pip install numpy psutil matplotlib
+      - name: Install package and test dependencies
+        run: python -m pip install -e '.[test]'
 
-      - name: Run FourierDNA + Router tests
-        run: python tests/test_fourier_dna.py
+      - name: Run test suite
+        run: python -m pytest -q
 
-      - name: Run InfiniteParameter tests
-        run: python tests/test_infinite_parameter.py
+      - name: Compile package, examples, and tests
+        run: python -m compileall -q dna_dynimo examples tests
 
-      - name: Run DNATransformer tests
-        run: python tests/test_dna_transformer.py
-
-      - name: Run visualization smoke test
-        run: python -c "from src.visualization import demo; demo()"
+      - name: Visualization smoke test
+        run: python -c "from dna_dynimo.visualization import demo; demo()"
