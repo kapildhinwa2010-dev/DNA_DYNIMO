@@ -89,7 +89,9 @@ To train the shared generator through a transformer, construct it with `regenera
 
 ## Tests and security checks
 
-GitHub Actions runs the test suite on Python 3.10, 3.11, and 3.12. CodeQL scans the Python source. The examples load only local, trusted PyTorch checkpoints using restricted `weights_only=True` deserialization.
+GitHub Actions runs the test suite on Python 3.10, 3.11, and 3.12. The CodeQL workflow analyzes Python, but GitHub cannot accept its results while code scanning is disabled for this private repository. See [SECURITY.md](SECURITY.md). The examples load only local, trusted PyTorch checkpoints using restricted `weights_only=True` deserialization.
+
+Contributor setup and pull-request guidance are in [CONTRIBUTING.md](CONTRIBUTING.md); project changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Known limitations
 
