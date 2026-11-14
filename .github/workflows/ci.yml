@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install CPU-only PyTorch (fast)
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install dependencies
+        run: pip install numpy psutil matplotlib
+
+      - name: Run FourierDNA + Router tests
+        run: python tests/test_fourier_dna.py
+
+      - name: Run InfiniteParameter tests
+        run: python tests/test_infinite_parameter.py
+
+      - name: Run DNATransformer tests
+        run: python tests/test_dna_transformer.py
+
+      - name: Run visualization smoke test
+        run: python -c "from src.visualization import demo; demo()"
