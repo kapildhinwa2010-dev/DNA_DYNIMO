@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a reproducible defect in DNA_DYNIMO.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Before submitting, remove API keys, passwords, private data, and large generated artifacts from the report.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the issue and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps or minimal example
+      description: Include the smallest safe example that reproduces the problem.
+      render: python
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.11"
+    validations:
+      required: true
+  - type: input
+    id: torch
+    attributes:
+      label: PyTorch version
+      placeholder: "2.x"
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device
+      options:
+        - CPU
+        - CUDA GPU
+        - Other
+    validations:
+      required: true
