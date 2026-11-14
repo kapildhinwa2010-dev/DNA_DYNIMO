@@ -37,12 +37,16 @@ class ResourceMonitor:
             print(f"💾 Available RAM: {available_gb:.2f} GB")
             return available_gb
 
-    def calculate_max_params(self, safety_margin=0.8):
+    def calculate_max_params(self, safety_margin=0.8, hard_cap=200_000_000):
         """
         Calculate karta hai ki kitne parameters safely generate kar sakte hain.
 
         Args:
             safety_margin: Kitna memory buffer rakhna hai (0.8 = 80% use karo)
+            hard_cap: Safety cap — RAM/VRAM jitna bada ho, generated weights
+                      dict mein hold karna padta hai, isliye bina cap ke
+                      16GB machine pe bhi ~19GB weights ka order ban sakta
+                      tha (OOM bug). Default 200M params (~800 MB FP32).
 
         Returns:
             max_params: Maximum parameters jo generate kar sakte hain
@@ -52,6 +56,12 @@ class ResourceMonitor:
         # FP32 = 4 bytes per parameter
         bytes_per_param = 4
         max_params = int((available_gb * safety_margin * 1024**3) / bytes_per_param)
+
+        # 🐛 FIX: hard cap lagao warna badi RAM machine pe absurd order banta hai
+        if max_params > hard_cap:
+            print(f"⚠️  RAM-based limit ({max_params:,}) hard_cap se bada tha — "
+                  f"capping at {hard_cap:,}")
+            max_params = hard_cap
 
         print(f"📊 Max Parameters Possible: {max_params:,} ({max_params/1e6:.1f}M)")
         return max_params
@@ -196,12 +206,15 @@ class ComplexityRouter:
 
         return allocated
 
-    def route(self, text):
+    def route(self, text, max_params=None):
         """
         Master function: Input leke DNA ko order deta hai.
 
         Args:
             text: User input text
+            max_params: Optional cap — tests/CI mein chhota value do
+                        (warna RAM-based limit pe huge generation hogi).
+                        None = ResourceMonitor ka hard_cap use hoga.
 
         Returns:
             allocated_params: Kitne parameters generate hue
@@ -214,7 +227,8 @@ class ComplexityRouter:
         complexity = self.calculate_complexity(text)
 
         # Step 2: Check hardware limits
-        max_params = self.resource_monitor.calculate_max_params()
+        if max_params is None:
+            max_params = self.resource_monitor.calculate_max_params()
 
         # Step 3: Allocate parameters
         allocated = self.allocate_parameters(complexity, max_params)
@@ -373,7 +387,7 @@ def demo():
     ]
 
     for text in test_inputs:
-        result = router.route(text)
+        result = router.route(text, max_params=100_000_000)  # 🐛 FIX: cap, warna huge generation
         print("\n" + "-"*60 + "\n")
 
     print("="*60)

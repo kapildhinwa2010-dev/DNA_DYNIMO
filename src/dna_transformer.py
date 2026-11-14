@@ -11,6 +11,12 @@ Architecture:
 
 Training tip: DNA ko freeze karke sirf embedding/head/LayerNorm train karo
 (fast start), ya sab kuch fine-tune karo (full capacity).
+
+⚠️ NOTE (regenerate=True): har forward pe naye nn.Parameter assign hote
+hain — optimizer purane param objects ko hold karta hai, isliye fresh
+weights optimizer state se bahar rehte hain (sirf wrapper params update
+honge). regenerate=True ko experimental "infinite DNA" mode ki tarah use
+karo; real training ke liye regenerate=False (default) sahi hai.
 """
 import math
 import torch
@@ -38,7 +44,11 @@ class DNAAttention(nn.Module):
         self.W_o = nn.Parameter(dna.generate_weights(d_model, d_model))
 
     def _maybe_regen(self, param, out_dim, in_dim):
-        """regenerate=True ho to har forward pe DNA se fresh weights lo."""
+        """regenerate=True ho to har forward pe DNA se fresh weights lo.
+
+        ⚠️ Experimental: naya Parameter optimizer ke state se bahar hota
+        hai (upar module docstring dekho).
+        """
         if self.regenerate and self.training:
             return nn.Parameter(self.dna.generate_weights(out_dim, in_dim))
         return param
@@ -109,7 +119,7 @@ class DNATransformer(nn.Module):
         num_layers: number of blocks
         d_ff: FFN dimension (default 4x)
         max_seq_len: max sequence length
-        regenerate: har training step pe DNA se fresh weights (True = "infinite DNA" mode)
+        regenerate: har training step pe DNA se fresh weights (experimental)
 
     Weight accounting:
         dna_generated_params()  → DNA se aaye weights (compressed idea)

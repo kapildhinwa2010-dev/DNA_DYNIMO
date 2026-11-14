@@ -51,12 +51,19 @@ def test_xavier_scale():
 
 
 def test_router_end_to_end():
-    """Router: text → complexity → allocated params → weights."""
+    """Router: text → complexity → allocated params → weights.
+
+    🐛 FIX: max_params=12M pass karna zaroori hai — warna RAM-based limit
+    (16GB machine pe ~3B params) pe router 19GB+ weights generate karne
+    ki koshish karta aur test OOM/hang ho jata.
+    """
     engine = DNAEngine(hidden=64, num_freqs=32)
     router = ComplexityRouter(engine)
-    result = router.route("Explain quantum entanglement in detail.")
+    result = router.route("Explain quantum entanglement in detail.",
+                          max_params=12_000_000)
     assert 0.0 <= result['complexity'] <= 1.0
     assert result['allocated_params'] > 0
+    assert result['allocated_params'] <= 12_000_000
     assert len(result['weights']) == result['num_layers']
     print("✅ test_router_end_to_end PASSED")
 

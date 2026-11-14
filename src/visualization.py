@@ -8,6 +8,7 @@
 Run: python src/visualization.py
 """
 import os
+import zlib
 import numpy as np
 import torch
 import matplotlib
@@ -43,8 +44,10 @@ def compare_domains(dna, domains=('general', 'math', 'code', 'science'),
     if len(domains) == 1:
         axes = [axes]
     for ax, name in zip(axes, domains):
-        # Domain conditioning ke liye B matrix ko per-domain offset do (demo)
-        torch.manual_seed(hash(name) % (2**31))
+        # 🐛 FIX: hash() process-dependent hota hai (PYTHONHASHSEED) —
+        # zlib.crc32 deterministic hai, isliye plots har run pe same aayenge
+        seed = zlib.crc32(name.encode('utf-8'))
+        torch.manual_seed(seed)
         B_backup = dna.B.clone()
         with torch.no_grad():
             dna.B.copy_(torch.randn_like(dna.B) * 20.0)
